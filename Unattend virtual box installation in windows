@@ -1,0 +1,115 @@
+
+# =========================
+# VARIABLES
+# =========================
+$PentestDir  = "C:\Pentest"
+$VBoxExe     = "$PentestDir\virtualbox.exe"
+$VBoxURL     = "https://download.virtualbox.org/virtualbox/7.2.4/VirtualBox-7.2.4-170995-Win.exe"
+$VBoxMSI    = "VirtualBox-7.2.4-r170995-MultiArch_amd64.msi"
+$VBoxMSIPath = "$env:TEMP\$VBoxMSI"
+
+# =========================
+# 1️⃣ UNINSTALL VIRTUALBOX IF PRESENT
+# =========================
+Write-Host "[*] Checking for existing VirtualBox installation..."
+
+$VBox = Get-WmiObject Win32_Product | Where-Object {
+    $_.Name -like "Oracle VirtualBox*"
+}
+
+if ($VBox) {
+    Write-Host "[+] VirtualBox detected. Uninstalling..."
+    $VBox.Uninstall() | Out-Null
+    Start-Sleep -Seconds 5
+} else {
+    Write-Host "[+] VirtualBox not installed."
+}
+
+# =========================
+# 2️⃣ CREATE C:\Pentest
+# =========================
+if (-not (Test-Path $PentestDir)) {
+    Write-Host "[+] Creating C:\Pentest..."
+    New-Item -ItemType Directory -Path $PentestDir | Out-Null
+}
+
+# =========================
+# 3️⃣ DOWNLOAD INSTALLER IF MISSING
+# =========================
+if (-not (Test-Path $VBoxExe)) {
+    Write-Host "[+] Downloading VirtualBox..."
+    Invoke-WebRequest -Uri $VBoxURL -OutFile $VBoxExe
+} else {
+    Write-Host "[+] Installer already exists. Skipping download."
+}
+
+# Remove SmartScreen block
+Unblock-File $VBoxExe
+
+# =========================
+# 4️⃣ EXTRACT (NO -WAIT → AVOID DEADLOCK)
+# =========================
+Write-Host "[+] Extracting VirtualBox..."
+Start-Process -FilePath $VBoxExe -ArgumentList "--extract"
+
+# Wait for popup to appear
+Start-Sleep -Seconds 6
+
+# =========================
+# 6️⃣ SILENT INSTALL VIA MSI
+# =========================
+if (Test-Path $VBoxMSIPath) {
+    Write-Host "[+] Installing VirtualBox silently..."
+    Start-Process msiexec.exe `
+        -ArgumentList "/i `"$VBoxMSIPath`" /qn /norestart" `
+        -Wait
+} else {
+    Write-Error "[-] MSI not found: $VBoxMSIPath"
+}
+
+# Wait for popup to appear
+Start-Sleep -Seconds 4
+
+# ============================
+# CLOSE ALERT BOX BY TITLE
+# ============================
+
+$WindowTitle = "*VirtualBox Installer*"
+$Timeout     = 20
+
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinAPI {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+}
+"@
+
+Add-Type -AssemblyName System.Windows.Forms
+
+Write-Host "[*] Waiting for alert window..."
+
+$found = $false
+
+for ($i = 0; $i -lt $Timeout; $i++) {
+
+    $proc = Get-Process | Where-Object {
+        $_.MainWindowTitle -like $WindowTitle -and $_.MainWindowHandle -ne 0
+    }
+
+    if ($proc) {
+        Write-Host "[+] Alert found → bringing to focus and clicking OK"
+        [WinAPI]::SetForegroundWindow($proc.MainWindowHandle)
+        Start-Sleep -Milliseconds 500
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+        $found = $true
+        break
+    }
+
+    Start-Sleep -Seconds 1
+}
+
+if (-not $found) {
+    Write-Host "[!] Alert window not found (may already be closed)"
+}
