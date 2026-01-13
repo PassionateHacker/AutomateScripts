@@ -1,0 +1,44 @@
+# ---------------------------
+# CONFIGURATION
+# ---------------------------
+$VBoxManage = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+$OVAPath    = "C:\Pentest\Coresec-Vonahi.ova"
+$VMName     = "Vonahi"
+
+# ---------------------------
+# CHECKS
+# ---------------------------
+if (!(Test-Path $VBoxManage)) {
+    Write-Error "VBoxManage not found at $VBoxManage"
+    exit
+}
+
+if (!(Test-Path $OVAPath)) {
+    Write-Error "OVA file not found at $OVAPath"
+    exit
+}
+
+# ---------------------------
+# IMPORT OVA
+# ---------------------------
+Write-Host "[*] Importing OVA..."
+& "$VBoxManage" import "$OVAPath" --vsys 0 --vmname "$VMName"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "OVA import failed"
+    exit
+}
+
+Write-Host "[+] Import successful"
+
+# ---------------------------
+# START VM
+# ---------------------------
+Write-Host "[*] Starting VM..."
+& "$VBoxManage" startvm "$VMName" --type headless
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[+] VM started successfully"
+} else {
+    Write-Error "Failed to start VM"
+}
